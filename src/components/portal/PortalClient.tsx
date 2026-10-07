@@ -462,7 +462,7 @@ export function PortalClient({
 
         {/* Modal Pengajuan Pindah Kamar */}
         {changeTargetRoom && (
-          <div className="fixed inset-0 z-50 w-screen h-screen min-h-screen bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="fixed inset-0 !m-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
             <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-200 animate-in fade-in zoom-in-95">
               <h3 className="text-base font-bold text-slate-900">
                 Ajukan Pindah ke Kamar {changeTargetRoom.roomNumber}

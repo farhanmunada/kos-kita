@@ -94,29 +94,93 @@ export function MeterClient({
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pencatatan Meteran Listrik Siklus Check-in</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Sistem otomatis menarik angka kWh terakhir & siklus masuk penghuni. Anda hanya perlu input angka meteran saat ini.
-          </p>
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pencatatan Meteran Listrik Siklus Check-in</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Sistem otomatis menarik angka kWh terakhir & siklus masuk penghuni. Anda hanya perlu input angka meteran saat ini.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              setIsOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-xs transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Input Angka Meteran Baru</span>
+          </button>
         </div>
-        <button
-          onClick={() => {
-            setError(null);
-            setIsOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-xs transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Input Angka Meteran Baru</span>
-        </button>
+
+        {/* Tabel Riwayat Pencatatan Listrik */}
+        <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-sm text-slate-600">
+              <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
+                <tr>
+                  <th className="px-6 py-3.5">Kamar</th>
+                  <th className="px-6 py-3.5">Periode Siklus</th>
+                  <th className="px-6 py-3.5">kWh Awal</th>
+                  <th className="px-6 py-3.5">kWh Akhir</th>
+                  <th className="px-6 py-3.5">Pemakaian</th>
+                  <th className="px-6 py-3.5">Tarif / kWh</th>
+                  <th className="px-6 py-3.5">Total Biaya Listrik</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-slate-100">
+                {readings.map((r) => {
+                  const used = Math.max(0, Number(r.endKwh) - Number(r.startKwh));
+                  const total = Math.round(used * Number(r.ratePerKwh));
+                  return (
+                    <tr key={r.id} className="hover:bg-slate-50/70 transition">
+                      <td className="px-6 py-4">
+                        <span className="font-bold text-slate-900 block">Kamar {r.room.roomNumber}</span>
+                        <span className="text-xs text-slate-400">{r.room.name ? `${r.room.name} • ` : ""}{r.room.type}</span>
+                      </td>
+                      <td className="px-6 py-4 text-xs font-medium">
+                        {r.periodStartDate && r.periodEndDate ? (
+                          <span>
+                            {formatDateIndo(r.periodStartDate)} - {formatDateIndo(r.periodEndDate)}
+                          </span>
+                        ) : (
+                          <span>{formatDateIndo(r.periodDate)}</span>
+                        )}
+                      </td>
+                      <td className="px-6 py-4 font-mono text-xs text-slate-500">{r.startKwh}</td>
+                      <td className="px-6 py-4 font-mono text-xs font-semibold text-slate-900">{r.endKwh}</td>
+                      <td className="px-6 py-4">
+                        <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-xs">
+                          {used.toFixed(2)} kWh
+                        </span>
+                      </td>
+                      <td className="px-6 py-4 text-xs text-slate-500">
+                        {formatRupiah(r.ratePerKwh)}
+                      </td>
+                      <td className="px-6 py-4 font-bold text-slate-900">
+                        {formatRupiah(total)}
+                      </td>
+                    </tr>
+                  );
+                })}
+                {readings.length === 0 && (
+                  <tr>
+                    <td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-xs">
+                      Belum ada riwayat pencatatan meteran listrik.
+                    </td>
+                  </tr>
+                )}
+              </tbody>
+            </table>
+          </div>
+        </div>
       </div>
 
       {/* MODAL INPUT DENGAN AUTO-FILL SIKLUS & KWH AWAL */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 w-screen h-screen min-h-screen bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 !m-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div className="flex items-center gap-2.5">
@@ -287,68 +351,6 @@ export function MeterClient({
           </div>
         </div>
       )}
-
-      {/* Tabel Riwayat Pencatatan Listrik */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm text-slate-600">
-            <thead className="bg-slate-50 text-xs font-semibold text-slate-500 uppercase tracking-wider border-b border-slate-100">
-              <tr>
-                <th className="px-6 py-3.5">Kamar</th>
-                <th className="px-6 py-3.5">Periode Siklus</th>
-                <th className="px-6 py-3.5">kWh Awal</th>
-                <th className="px-6 py-3.5">kWh Akhir</th>
-                <th className="px-6 py-3.5">Pemakaian</th>
-                <th className="px-6 py-3.5">Tarif / kWh</th>
-                <th className="px-6 py-3.5">Total Biaya Listrik</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-slate-100">
-              {readings.map((r) => {
-                const used = Math.max(0, Number(r.endKwh) - Number(r.startKwh));
-                const total = Math.round(used * Number(r.ratePerKwh));
-                return (
-                  <tr key={r.id} className="hover:bg-slate-50/70 transition">
-                    <td className="px-6 py-4">
-                      <span className="font-bold text-slate-900 block">Kamar {r.room.roomNumber}</span>
-                      <span className="text-xs text-slate-400">{r.room.name ? `${r.room.name} • ` : ""}{r.room.type}</span>
-                    </td>
-                    <td className="px-6 py-4 text-xs font-medium">
-                      {r.periodStartDate && r.periodEndDate ? (
-                        <span>
-                          {formatDateIndo(r.periodStartDate)} - {formatDateIndo(r.periodEndDate)}
-                        </span>
-                      ) : (
-                        <span>{formatDateIndo(r.periodDate)}</span>
-                      )}
-                    </td>
-                    <td className="px-6 py-4 font-mono text-xs text-slate-500">{r.startKwh}</td>
-                    <td className="px-6 py-4 font-mono text-xs font-semibold text-slate-900">{r.endKwh}</td>
-                    <td className="px-6 py-4">
-                      <span className="font-semibold text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded text-xs">
-                        {used.toFixed(2)} kWh
-                      </span>
-                    </td>
-                    <td className="px-6 py-4 text-xs text-slate-500">
-                      {formatRupiah(r.ratePerKwh)}
-                    </td>
-                    <td className="px-6 py-4 font-bold text-slate-900">
-                      {formatRupiah(total)}
-                    </td>
-                  </tr>
-                );
-              })}
-              {readings.length === 0 && (
-                <tr>
-                  <td colSpan={7} className="px-6 py-12 text-center text-slate-400 text-xs">
-                    Belum ada riwayat pencatatan meteran listrik.
-                  </td>
-                </tr>
-              )}
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
+    </>
   );
 }

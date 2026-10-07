@@ -89,29 +89,112 @@ export function RoomsClient({ initialRooms, role }: { initialRooms: Room[]; role
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
-        <div>
-          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Inventaris & Fasilitas Kamar</h1>
-          <p className="text-sm text-slate-500 mt-0.5">
-            Daftar kamar, spesifikasi fasilitas, penetapan harga dasar, dan status ketersediaan.
-          </p>
+    <>
+      <div className="space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <div>
+            <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Inventaris & Fasilitas Kamar</h1>
+            <p className="text-sm text-slate-500 mt-0.5">
+              Daftar kamar, spesifikasi fasilitas, penetapan harga dasar, dan status ketersediaan.
+            </p>
+          </div>
+          <button
+            onClick={() => {
+              setError(null);
+              setIsOpen(true);
+            }}
+            className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-xs transition"
+          >
+            <Plus className="w-4 h-4" />
+            <span>Tambah Kamar Baru</span>
+          </button>
         </div>
-        <button
-          onClick={() => {
-            setError(null);
-            setIsOpen(true);
-          }}
-          className="flex items-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white text-sm font-semibold rounded-xl shadow-xs transition"
-        >
-          <Plus className="w-4 h-4" />
-          <span>Tambah Kamar Baru</span>
-        </button>
+
+        {/* Grid Kamar yang Ditingkatkan */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+          {initialRooms.map((room) => (
+            <div key={room.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3 flex flex-col justify-between">
+              <div>
+                <div className="flex items-start justify-between">
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xl font-bold text-slate-900 tracking-tight">Kamar {room.roomNumber}</span>
+                      <span
+                        className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
+                          room.status === "AVAILABLE"
+                            ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
+                            : room.status === "OCCUPIED"
+                            ? "bg-blue-50 text-blue-700 border border-blue-200"
+                            : "bg-amber-50 text-amber-700 border border-amber-200"
+                        }`}
+                      >
+                        {room.status === "AVAILABLE" ? "Tersedia" : room.status === "OCCUPIED" ? "Terisi" : "Perbaikan"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-slate-500 mt-0.5">
+                      {room.name ? `${room.name} • ` : ""}{room.type}
+                    </p>
+                  </div>
+
+                  {role === "OWNER" && (
+                    <button
+                      onClick={() => handleDelete(room.id)}
+                      title="Hapus Kamar"
+                      className="text-slate-300 hover:text-rose-600 p-1 rounded-lg transition"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
+                  )}
+                </div>
+
+                {/* Fasilitas Pills */}
+                {room.facilities && room.facilities.length > 0 && (
+                  <div className="flex flex-wrap gap-1 pt-2">
+                    {room.facilities.map((fac) => (
+                      <span
+                        key={fac}
+                        className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium"
+                      >
+                        {fac}
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
+                <div>
+                  <span className="text-[11px] text-slate-400 uppercase tracking-wider block">Harga Sewa</span>
+                  <span className="text-base font-bold text-slate-900">{formatRupiah(room.basePrice)}</span>
+                </div>
+
+                {/* Status Switcher */}
+                <select
+                  value={room.status}
+                  onChange={(e) => handleStatusChange(room.id, e.target.value as any)}
+                  className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none"
+                >
+                  <option value="AVAILABLE">Tersedia</option>
+                  <option value="OCCUPIED">Terisi</option>
+                  <option value="MAINTENANCE">Perbaikan</option>
+                </select>
+              </div>
+            </div>
+          ))}
+
+          {initialRooms.length === 0 && (
+            <div className="col-span-full py-16 text-center bg-white rounded-2xl border border-dashed border-slate-200">
+              <DoorClosed className="w-10 h-10 text-slate-300 mx-auto mb-2" />
+              <h3 className="text-sm font-semibold text-slate-700">Belum ada kamar</h3>
+              <p className="text-xs text-slate-400 mt-0.5">Tambahkan kamar baru untuk mulai mengelola kos.</p>
+            </div>
+          )}
+        </div>
       </div>
 
       {/* MODAL FULL-VIEWPORT BACKDROP FIX */}
       {isOpen && (
-        <div className="fixed inset-0 z-50 w-screen h-screen min-h-screen bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
+        <div className="fixed inset-0 !m-0 z-50 bg-slate-900/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto">
           <div className="bg-white rounded-2xl max-w-lg w-full p-6 shadow-2xl border border-slate-200 my-auto animate-in fade-in zoom-in-95 duration-150">
             <div className="flex items-center justify-between pb-4 border-b border-slate-100">
               <div>
@@ -266,87 +349,6 @@ export function RoomsClient({ initialRooms, role }: { initialRooms: Room[]; role
           </div>
         </div>
       )}
-
-      {/* Grid Kamar yang Ditingkatkan */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
-        {initialRooms.map((room) => (
-          <div key={room.id} className="bg-white rounded-2xl border border-slate-200 p-5 shadow-xs space-y-3 flex flex-col justify-between">
-            <div>
-              <div className="flex items-start justify-between">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xl font-bold text-slate-900 tracking-tight">Kamar {room.roomNumber}</span>
-                    <span
-                      className={`text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider ${
-                        room.status === "AVAILABLE"
-                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
-                          : room.status === "OCCUPIED"
-                          ? "bg-blue-50 text-blue-700 border border-blue-200"
-                          : "bg-amber-50 text-amber-700 border border-amber-200"
-                      }`}
-                    >
-                      {room.status === "AVAILABLE" ? "Tersedia" : room.status === "OCCUPIED" ? "Terisi" : "Perbaikan"}
-                    </span>
-                  </div>
-                  <p className="text-xs text-slate-500 mt-0.5">
-                    {room.name ? `${room.name} • ` : ""}{room.type}
-                  </p>
-                </div>
-
-                {role === "OWNER" && (
-                  <button
-                    onClick={() => handleDelete(room.id)}
-                    title="Hapus Kamar"
-                    className="text-slate-300 hover:text-rose-600 p-1 rounded-lg transition"
-                  >
-                    <Trash2 className="w-4 h-4" />
-                  </button>
-                )}
-              </div>
-
-              {/* Fasilitas Pills */}
-              {room.facilities && room.facilities.length > 0 && (
-                <div className="flex flex-wrap gap-1 pt-2">
-                  {room.facilities.map((fac) => (
-                    <span
-                      key={fac}
-                      className="text-[10px] bg-slate-100 text-slate-700 px-2 py-0.5 rounded font-medium"
-                    >
-                      {fac}
-                    </span>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            <div className="pt-3 border-t border-slate-100 flex items-center justify-between">
-              <div>
-                <span className="text-[11px] text-slate-400 uppercase tracking-wider block">Harga Sewa</span>
-                <span className="text-base font-bold text-slate-900">{formatRupiah(room.basePrice)}</span>
-              </div>
-
-              {/* Status Switcher */}
-              <select
-                value={room.status}
-                onChange={(e) => handleStatusChange(room.id, e.target.value as any)}
-                className="text-xs bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1.5 font-medium text-slate-700 focus:outline-none"
-              >
-                <option value="AVAILABLE">Tersedia</option>
-                <option value="OCCUPIED">Terisi</option>
-                <option value="MAINTENANCE">Perbaikan</option>
-              </select>
-            </div>
-          </div>
-        ))}
-
-        {initialRooms.length === 0 && (
-          <div className="col-span-full py-16 text-center bg-white rounded-2xl border border-dashed border-slate-200">
-            <DoorClosed className="w-10 h-10 text-slate-300 mx-auto mb-2" />
-            <h3 className="text-sm font-semibold text-slate-700">Belum ada kamar</h3>
-            <p className="text-xs text-slate-400 mt-0.5">Tambahkan kamar baru untuk mulai mengelola kos.</p>
-          </div>
-        )}
-      </div>
-    </div>
+    </>
   );
 }
