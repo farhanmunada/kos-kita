@@ -97,8 +97,14 @@ export default function LoginPage() {
           </button>
         </form>
 
-        <div className="mt-8 pt-6 border-t border-slate-100 text-center">
-          <p className="text-xs text-slate-400">
+        <div className="mt-8 pt-6 border-t border-slate-100 text-center space-y-2">
+          <p className="text-xs text-slate-500">
+            Penghuni baru?{" "}
+            <a href="/register" className="text-indigo-600 font-semibold hover:underline">
+              Daftar akun mandiri
+            </a>
+          </p>
+          <p className="text-[11px] text-slate-400">
             Akses multi-role: Owner, Staff Pengelola, & Penghuni Kos
           </p>
         </div>

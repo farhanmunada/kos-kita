@@ -89,6 +89,15 @@ async function runSelfChecks() {
     console.log("✓ Midtrans SHA512 signature validation passed");
   }
 
+  // 6. Referral Code Generation
+  {
+    const { TenantService } = await import("../src/services/tenant.service");
+    const code = TenantService.generateReferralCode("Budi Santoso");
+    assert(code.startsWith("KOS-BUDI"));
+    assert.strictEqual(code.length, 12);
+    console.log("✓ Referral code generation logic passed");
+  }
+
   console.log("ALL SELF-CHECK TESTS PASSED!");
 }
 

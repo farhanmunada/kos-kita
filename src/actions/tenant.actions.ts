@@ -15,6 +15,7 @@ const tenantSchema = z.object({
   billingDay: z.coerce.number().min(1).max(31, "Tanggal siklus antara 1 sampai 31"),
   ktpNumber: z.string().optional(),
   emergencyPhone: z.string().optional(),
+  referralCodeUsed: z.string().optional(),
 });
 
 export async function createTenantAction(formData: FormData) {
@@ -33,6 +34,7 @@ export async function createTenantAction(formData: FormData) {
     billingDay: formData.get("billingDay"),
     ktpNumber: formData.get("ktpNumber") || undefined,
     emergencyPhone: formData.get("emergencyPhone") || undefined,
+    referralCodeUsed: formData.get("referralCodeUsed") || undefined,
   });
 
   if (!parsed.success) {
@@ -65,6 +67,27 @@ export async function deactivateTenantAction(tenantId: string) {
     return { success: true };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal menonaktifkan penghuni";
+    return { success: false, error: message };
+  }
+}
+
+export async function requestRoomChangeAction(targetRoomId: string, reason: string) {
+  const session = await getSession();
+  if (!session) {
+    return { success: false, error: "Silakan login terlebih dahulu" };
+  }
+
+  const tenant = await TenantService.getTenantByUserId(session.id);
+  if (!tenant) {
+    return { success: false, error: "Profil penghuni tidak ditemukan" };
+  }
+
+  try {
+    await TenantService.requestRoomChange(tenant.id, targetRoomId, reason);
+    revalidatePath("/portal");
+    return { success: true };
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Gagal mengajukan pindah kamar";
     return { success: false, error: message };
   }
 }

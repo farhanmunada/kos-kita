@@ -1,6 +1,6 @@
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, and, gt } from "drizzle-orm";
 import { db } from "@/db";
-import { invoices, tenants, users, rooms } from "@/db/schema";
+import { invoices, tenants, users, rooms, referrals } from "@/db/schema";
 import { MeterService } from "./meter.service";
 import type { InvoiceStatus } from "@/types";
 
@@ -59,7 +59,36 @@ export class BillingService {
     }
 
     const rentFee = Number(room.basePrice);
-    const totalAmount = rentFee + electricityFee;
+
+    // Hitung potongan referral affiliate (10% selama 6 bulan jika ada)
+    const activeReferrals = await db
+      .select()
+      .from(referrals)
+      .where(
+        and(
+          eq(referrals.referrerTenantId, tenant.id),
+          eq(referrals.isActive, true),
+          gt(referrals.monthsRemaining, 0)
+        )
+      )
+      .limit(1);
+
+    let discountFee = 0;
+    if (activeReferrals.length > 0) {
+      const activeRef = activeReferrals[0];
+      discountFee = Math.round(rentFee * (activeRef.discountPercentage / 100));
+
+      const newRemaining = activeRef.monthsRemaining - 1;
+      await db
+        .update(referrals)
+        .set({
+          monthsRemaining: newRemaining,
+          isActive: newRemaining > 0,
+        })
+        .where(eq(referrals.id, activeRef.id));
+    }
+
+    const totalAmount = Math.max(0, rentFee - discountFee) + electricityFee;
 
     // Jatuh tempo: 3 hari dari tanggal siklus penagihan
     const dueDate = new Date(monthPeriod);
@@ -75,6 +104,7 @@ export class BillingService {
         monthPeriod: monthPeriod,
         dueDate: dueDate,
         rentFee: String(rentFee),
+        discountFee: String(discountFee),
         electricityFee: String(electricityFee),
         totalAmount: String(totalAmount),
         status: "UNPAID",
@@ -197,27 +227,43 @@ export class BillingService {
 
   static async getFinancialSummary() {
     const allInvoices = await db.select().from(invoices);
+    const today = new Date();
     let totalRevenue = 0;
     let totalUnpaid = 0;
+    let totalDiscounts = 0;
+    let totalElectricityRevenue = 0;
     let paidCount = 0;
     let unpaidCount = 0;
+    let overdueCount = 0;
 
     for (const inv of allInvoices) {
       const amount = Number(inv.totalAmount);
+      const discount = Number(inv.discountFee || 0);
+      const elec = Number(inv.electricityFee || 0);
+
+      totalDiscounts += discount;
+      totalElectricityRevenue += elec;
+
       if (inv.status === "PAID") {
         totalRevenue += amount;
         paidCount++;
       } else if (inv.status === "UNPAID") {
         totalUnpaid += amount;
         unpaidCount++;
+        if (new Date(inv.dueDate) < today) {
+          overdueCount++;
+        }
       }
     }
 
     return {
       totalRevenue,
       totalUnpaid,
+      totalDiscounts,
+      totalElectricityRevenue,
       paidCount,
       unpaidCount,
+      overdueCount,
       totalInvoices: allInvoices.length,
     };
   }

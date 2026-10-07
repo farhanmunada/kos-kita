@@ -8,6 +8,8 @@ import { getSession } from "@/lib/auth";
 const meterSchema = z.object({
   roomId: z.string().uuid("Pilih kamar yang valid"),
   periodDate: z.string().transform((val) => new Date(val)),
+  periodStartDate: z.string().optional().transform((val) => (val ? new Date(val) : undefined)),
+  periodEndDate: z.string().optional().transform((val) => (val ? new Date(val) : undefined)),
   startKwh: z.coerce.number().min(0, "kWh awal tidak boleh negatif"),
   endKwh: z.coerce.number().min(0, "kWh akhir tidak boleh negatif"),
   ratePerKwh: z.coerce.number().positive("Tarif per kWh harus lebih dari 0"),
@@ -22,6 +24,8 @@ export async function recordMeterAction(formData: FormData) {
   const parsed = meterSchema.safeParse({
     roomId: formData.get("roomId"),
     periodDate: formData.get("periodDate"),
+    periodStartDate: formData.get("periodStartDate") || undefined,
+    periodEndDate: formData.get("periodEndDate") || undefined,
     startKwh: formData.get("startKwh"),
     endKwh: formData.get("endKwh"),
     ratePerKwh: formData.get("ratePerKwh"),
@@ -35,6 +39,7 @@ export async function recordMeterAction(formData: FormData) {
     await MeterService.recordMeterReading(parsed.data);
     revalidatePath("/meter");
     revalidatePath("/invoices");
+    revalidatePath("/dashboard");
     return { success: true };
   } catch (error: unknown) {
     const message = error instanceof Error ? error.message : "Gagal menyimpan pencatatan listrik";

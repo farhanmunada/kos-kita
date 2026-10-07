@@ -1,14 +1,13 @@
 import { MeterService } from "@/services/meter.service";
-import { RoomService } from "@/services/room.service";
 import { MeterClient } from "@/components/dashboard/MeterClient";
 
 export const dynamic = "force-dynamic";
 
 export default async function MeterPage() {
-  const [readings, rooms] = await Promise.all([
+  const [readings, meterContexts] = await Promise.all([
     MeterService.getAllMeterReadings(),
-    RoomService.getAllRooms(),
+    MeterService.getMeterContexts(),
   ]);
 
-  return <MeterClient readings={readings} rooms={rooms} />;
+  return <MeterClient readings={readings} meterContexts={meterContexts} />;
 }

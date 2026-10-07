@@ -1,4 +1,4 @@
-# ARCHITECTURE: Kos-Kosan Management System
+# ARCHITECTURE: Kos-Kosan Management System (Revisi v2.0)
 
 ## 1. Arsitektur Sistem & Database Cloud (Neon DB)
 
@@ -8,16 +8,17 @@ Sistem menggunakan full-cloud persistence tanpa state atau data lokal.
 [Client / Browser]
         │
         ▼ (HTTPS)
-[Next.js App Router (Vercel / Node Server)]
-  ├── Server Components & Actions
-  ├── Auth Middleware (NextAuth v5 / RBAC Guard)
-  ├── Route Handlers (/api/cron, /api/webhooks)
-  └── Drizzle ORM Driver
+[Next.js App Router (Node.js Serverless Runtime)]
+  ├── Presentation & Client Components (InteractiveRoomGrid, AlertTicker, PortalClient)
+  ├── Auth Guard Middleware (JWT verify via jose)
+  ├── Server Actions (Zod validator + mutation controllers)
+  ├── Domain Services (RoomService, MeterService, BillingService, TenantService)
+  └── Drizzle ORM Driver (@neondatabase/serverless)
         │
         ▼ (TLS/SSL Connection String)
 [Neon Database Serverless PostgreSQL]
   ├── Pooling Connection (Port 5432 / 6543)
-  └── SSL Mode: require
+  └── Relasi schema: users, rooms, tenants, referrals, room_change_requests, meter_readings, invoices
 ```
 
 Integrasi eksternal:
@@ -37,16 +38,18 @@ kos-kita/
 │   ├── PRD.md
 │   └── ARCHITECTURE.md
 ├── drizzle/                     # Migrasi SQL Drizzle
+│   ├── 0000_lucky_nemesis.sql
+│   └── 0001_tidy_the_order.sql
 ├── src/
 │   ├── app/                     # Presentation / HTTP Routing saja
-│   │   ├── (auth)/login/
+│   │   ├── (auth)/[login, register]/
 │   │   ├── (dashboard)/[rooms, tenants, meter, invoices, dashboard]/
 │   │   ├── (portal)/portal/
-│   │   └── api/[cron, webhooks, auth]/
-│   ├── components/              # UI Components murni (dumb/smart components)
-│   │   ├── ui/                  # Komponen atomik (button, input, modal)
-│   │   ├── dashboard/           # Komponen tampilan manajemen kos
-│   │   └── portal/              # Komponen tampilan portal tenant
+│   │   └── api/[cron, webhooks]/
+│   ├── components/              # UI Components murni
+│   │   ├── ui/                  # Komponen atomik (StatCard, dll)
+│   │   ├── dashboard/           # Komponen dashboard (AlertTicker, InteractiveRoomGrid, OwnerDashboardView, RoomsClient, MeterClient)
+│   │   └── portal/              # Komponen portal (PortalClient)
 │   ├── actions/                 # Controller / Server Actions (validasi input -> panggil service)
 │   │   ├── auth.actions.ts
 │   │   ├── room.actions.ts
@@ -62,30 +65,24 @@ kos-kita/
 │   │   └── payment.service.ts
 │   ├── db/                      # Persistence Layer (hanya skema & koneksi DB)
 │   │   ├── index.ts             # Inisialisasi pool Neon DB
-│   │   └── schema.ts            # Definisi entitas tabel Drizzle
+│   │   └── schema.ts            # Definisi entitas tabel & relasi Drizzle
 │   ├── lib/                     # Infrastruktur & Integrasi Pihak Ketiga
-│   │   ├── auth.ts              # Konfigurasi NextAuth engine
-│   │   ├── midtrans.ts          # Driver SDK Midtrans
+│   │   ├── auth.ts              # Konfigurasi Session Cookie JWT
+│   │   ├── midtrans.ts          # Driver SDK Midtrans & Signature SHA512
 │   │   ├── whatsapp.ts          # Formatter URL wa.me
-│   │   └── env.ts               # Validasi environment variables
+│   │   └── utils.ts             # Formatting mata uang & tanggal Indo
 │   └── types/                   # Definisi tipe DTO dan interface domain
 ```
 
-### Aturan Batas Lapisan (Layer Boundaries):
-1. **DB Layer (`src/db`):** Hanya definisi skema, koneksi, dan migrasi. Dilarang ada logika bisnis di sini.
-2. **Service Layer (`src/services`):** Tempat seluruh logika bisnis, rumus kalkulasi (listrik, tagihan), dan query Drizzle. Dilarang mengakses objek HTTP (`Request`, `Response`, `cookies()`, `redirect()`).
-3. **Action / Controller Layer (`src/actions` & `src/app/api`):** Menangani validasi skema masukan (Zod), otorisasi sesi, memanggil Service, dan mengembalikan hasil/redirect.
-4. **UI Layer (`src/components` & `src/app`):** Hanya rendering antarmuka, binding event form, dan pemanggilan Server Action.
-5. **Lib Layer (`src/lib`):** Isolasi SDK pihak ketiga (Midtrans, Auth.js) agar tidak bocor ke lapisan lain.
-
 ---
 
-## 3. Skema Data Relasional (Neon PostgreSQL via Drizzle)
+## 3. Skema Data Relasional Terkini (Neon PostgreSQL via Drizzle)
 
 ### 3.1. Enums
 - `role`: `'OWNER'`, `'STAFF'`, `'TENANT'`
 - `room_status`: `'AVAILABLE'`, `'OCCUPIED'`, `'MAINTENANCE'`
 - `invoice_status`: `'UNPAID'`, `'PAID'`, `'EXPIRED'`, `'CANCELLED'`
+- `room_change_status`: `'PENDING'`, `'APPROVED'`, `'REJECTED'`
 
 ### 3.2. Tabel Inti
 1. **`users`**
@@ -100,8 +97,10 @@ kos-kita/
 2. **`rooms`**
    - `id`: UUID (Primary Key, defaultRandom)
    - `room_number`: Text, Unique, Not Null
+   - `name`: Text (Nama/label kamar opsional)
    - `type`: Text, Not Null
    - `base_price`: Numeric(12, 2), Not Null
+   - `facilities`: Text[ ] (Array teks multi-fasilitas), Default `[]`, Not Null
    - `status`: `room_status` enum, Default `'AVAILABLE'`, Not Null
    - `created_at`: Timestamp, Default Now
 
@@ -110,89 +109,52 @@ kos-kita/
    - `user_id`: UUID, References `users.id`, Unique, Not Null
    - `room_id`: UUID, References `rooms.id`, Not Null
    - `rent_start_date`: Timestamp, Not Null
-   - `billing_day`: Integer (1-31), Not Null (sesuai tgl masuk)
+   - `billing_day`: Integer (1-31), Not Null (sesuai tgl check-in)
    - `ktp_number`: Text
    - `emergency_phone`: Text
+   - `referral_code`: Text, Unique (Kode unik milik tenant)
    - `is_active`: Boolean, Default `true`, Not Null
+   - `created_at`: Timestamp, Default Now
 
-4. **`meter_readings`**
+4. **`referrals`**
+   - `id`: UUID (Primary Key, defaultRandom)
+   - `referrer_tenant_id`: UUID, References `tenants.id`, Not Null
+   - `referee_tenant_id`: UUID, References `tenants.id`, Not Null
+   - `discount_percentage`: Integer, Default `10`, Not Null (10%)
+   - `months_remaining`: Integer, Default `6`, Not Null (6 bulan siklus tagihan)
+   - `is_active`: Boolean, Default `true`, Not Null
+   - `created_at`: Timestamp, Default Now
+
+5. **`room_change_requests`**
+   - `id`: UUID (Primary Key, defaultRandom)
+   - `tenant_id`: UUID, References `tenants.id`, Not Null
+   - `target_room_id`: UUID, References `rooms.id`, Not Null
+   - `reason`: Text, Not Null
+   - `status`: `room_change_status` enum, Default `'PENDING'`, Not Null
+   - `created_at`: Timestamp, Default Now
+
+6. **`meter_readings`**
    - `id`: UUID (Primary Key, defaultRandom)
    - `room_id`: UUID, References `rooms.id`, Not Null
+   - `period_start_date`: Timestamp (Opsional, awal siklus)
+   - `period_end_date`: Timestamp (Opsional, akhir siklus)
    - `period_date`: Timestamp, Not Null
-   - `start_kwh`: Numeric(10, 2), Not Null
+   - `start_kwh`: Numeric(10, 2), Not Null (Terkunci dari pembacaan sebelumnya)
    - `end_kwh`: Numeric(10, 2), Not Null
    - `rate_per_kwh`: Numeric(10, 2), Not Null
    - `created_at`: Timestamp, Default Now
 
-5. **`invoices`**
+7. **`invoices`**
    - `id`: UUID (Primary Key, defaultRandom)
    - `tenant_id`: UUID, References `tenants.id`, Not Null
    - `invoice_number`: Text, Unique, Not Null
    - `month_period`: Timestamp, Not Null
    - `due_date`: Timestamp, Not Null
    - `rent_fee`: Numeric(12, 2), Not Null
+   - `discount_fee`: Numeric(12, 2), Default `0`, Not Null (Potongan referral)
    - `electricity_fee`: Numeric(12, 2), Default `0`, Not Null
    - `total_amount`: Numeric(12, 2), Not Null
    - `status`: `invoice_status` enum, Default `'UNPAID'`, Not Null
    - `midtrans_snap_token`: Text
    - `paid_at`: Timestamp
    - `created_at`: Timestamp, Default Now
-
----
-
-## 4. Pipeline Koneksi Neon DB
-
-Menggunakan package `@neondatabase/serverless` atau `postgres` dengan connection string `DATABASE_URL`:
-- String format: `postgresql://user:pass@ep-xyz.neon.tech/neondb?sslmode=require`
-- Drizzle config mengarahkan langsung ke URL Neon untuk generate migrasi:
-  ```typescript
-  import { defineConfig } from 'drizzle-kit';
-  export default defineConfig({
-    schema: './src/db/schema.ts',
-    out: './drizzle',
-    dialect: 'postgresql',
-    dbCredentials: {
-      url: process.env.DATABASE_URL!,
-    },
-  });
-  ```
-
----
-
-## 5. Matriks Hak Akses (RBAC & Route Guard)
-
-| Path Prefix | Role Izin | Aksi |
-|---|---|---|
-| `/login` | Public (Unauthenticated) | Form login email/password |
-| `/dashboard` | `OWNER`, `STAFF` | Metrik operasional kos & pintasan |
-| `/rooms` | `OWNER`, `STAFF` | Kelola kamar kos & harga dasar |
-| `/tenants` | `OWNER`, `STAFF` | Kelola penghuni & tanggal sewa |
-| `/meter` | `OWNER`, `STAFF` | Pencatatan meteran listrik |
-| `/invoices` | `OWNER`, `STAFF` | Monitoring invoice & tombol pengingat WA |
-| `/portal` | `TENANT` | Detail kamar, daftar tagihan, tombol Midtrans Snap |
-| `/api/cron/*` | Bearer Token (CRON_SECRET) | Generator invoice otomatis |
-| `/api/webhooks/midtrans` | Public (Verified Signature) | Update status invoice |
-
----
-
-## 6. Rencana Tahap Implementasi (Task Breakdown)
-
-1. **Task 1: Inisialisasi Fondasi & Neon DB Setup**
-   - Init Next.js, pasang Drizzle ORM, setup koneksi Neon DB, definisikan skema tabel di `src/db/schema.ts`.
-   - Jalankan push skema ke Neon DB.
-2. **Task 2: Autentikasi & RBAC Middleware**
-   - Setup NextAuth v5 + password hashing bcrypt.
-   - Buat halaman login dan middleware penjaga rute (Owner/Staff vs Tenant).
-3. **Task 3: Modul Data Kamar & Penghuni**
-   - Form & tabel kamar (`/rooms`).
-   - Form & tabel registrasi penghuni (`/tenants`) terhubung ke kamar dan penetapan `billingDay`.
-4. **Task 4: Modul Meteran Listrik**
-   - Pencatatan meteran listrik bulanan per kamar (`/meter`).
-   - Kalkulasi otomatis `(endKwh - startKwh) * ratePerKwh`.
-5. **Task 5: Generator Invoice & Notifikasi WhatsApp**
-   - API cron `/api/cron/billing` untuk generate invoice otomatis berdasarkan `billingDay`.
-   - Halaman daftar tagihan & generator link pengingat WhatsApp (`wa.me`).
-6. **Task 6: Integrasi Midtrans Snap Sandbox**
-   - Setup API Snap Token.
-   - Pasang pop-up pembayaran di portal penghuni (`/portal`).
-   - Setup webhook `/api/webhooks/midtrans` verifikasi signature dan update status ke `PAID`.

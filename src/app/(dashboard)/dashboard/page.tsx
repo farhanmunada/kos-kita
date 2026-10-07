@@ -1,11 +1,14 @@
 import Link from "next/link";
+import { getSession } from "@/lib/auth";
 import { RoomService } from "@/services/room.service";
 import { BillingService } from "@/services/billing.service";
 import { TenantService } from "@/services/tenant.service";
 import { StatCard } from "@/components/ui/StatCard";
+import { AlertTicker, type AlertItem } from "@/components/dashboard/AlertTicker";
+import { InteractiveRoomGrid } from "@/components/dashboard/InteractiveRoomGrid";
+import { OwnerDashboardView } from "@/components/dashboard/OwnerDashboardView";
 import { formatRupiah, formatDateIndo } from "@/lib/utils";
 import { 
-  Building2, 
   DoorClosed, 
   Users, 
   Wallet, 
@@ -13,100 +16,198 @@ import {
   CheckCircle2, 
   Plus, 
   Zap, 
-  ReceiptText 
+  ReceiptText,
+  Clock,
+  ShieldAlert
 } from "lucide-react";
 
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const [occupancy, finance, tenants, recentInvoices] = await Promise.all([
+  const session = await getSession();
+
+  const [occupancy, finance, tenants, recentInvoices, monitoringRooms] = await Promise.all([
     RoomService.getOccupancyStats(),
     BillingService.getFinancialSummary(),
     TenantService.getAllTenants(true),
     BillingService.getAllInvoices(),
+    RoomService.getMonitoringRooms(),
   ]);
 
+  // Jika Owner: Tampilkan 1 halaman penuh informasi eksekutif (Read-Only)
+  if (session?.role === "OWNER") {
+    return (
+      <OwnerDashboardView
+        finance={finance}
+        occupancy={occupancy}
+        recentInvoices={recentInvoices}
+      />
+    );
+  }
+
+  // Jika Staff / Pengelola: Dashboard Operasional Terpadu dengan Urgent Alert Center
+  const today = new Date();
+  const alerts: AlertItem[] = [];
+
+  monitoringRooms.forEach((r) => {
+    if (r.urgencyStatus === "OVERDUE" && r.latestInvoice) {
+      alerts.push({
+        id: `overdue-${r.id}`,
+        type: "overdue",
+        message: `Tagihan Overdue ${formatRupiah(r.latestInvoice.totalAmount)} (${r.activeTenant?.name || "Penghuni"})`,
+        roomNumber: r.roomNumber,
+        href: "/invoices",
+      });
+    } else if (r.urgencyStatus === "NEED_METER") {
+      alerts.push({
+        id: `meter-${r.id}`,
+        type: "need_meter",
+        message: `Waktunya catat meteran kWh listrik untuk periode ini`,
+        roomNumber: r.roomNumber,
+        href: "/meter",
+      });
+    } else if (r.urgencyStatus === "DUE_SOON" && r.latestInvoice) {
+      alerts.push({
+        id: `due-${r.id}`,
+        type: "due_soon",
+        message: `Jatuh tempo pada ${formatDateIndo(r.latestInvoice.dueDate)}`,
+        roomNumber: r.roomNumber,
+        href: "/invoices",
+      });
+    }
+  });
+
+  const needMeterCount = monitoringRooms.filter((r) => r.urgencyStatus === "NEED_METER").length;
+
   return (
-    <div className="space-y-8 max-w-7xl mx-auto">
-      <div>
-        <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Ringkasan Operasional</h1>
-        <p className="text-sm text-slate-500 mt-1">Pantau status hunian, keuangan, dan tagihan kos secara langsung.</p>
+    <div className="space-y-6 max-w-7xl mx-auto">
+      {/* 1. Running Alert Marquee Ticker */}
+      <AlertTicker alerts={alerts} />
+
+      {/* Header Operasional Staff */}
+      <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900 tracking-tight">Pusat Operasional Kos</h1>
+          <p className="text-sm text-slate-500 mt-0.5">Monitoring hunian, pencatatan meteran, dan penagihan aktif.</p>
+        </div>
+        <div className="flex items-center gap-2">
+          <Link
+            href="/meter"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-amber-500 hover:bg-amber-600 text-white text-xs font-semibold rounded-xl shadow-xs transition"
+          >
+            <Zap className="w-3.5 h-3.5" />
+            <span>Catat Listrik</span>
+          </Link>
+          <Link
+            href="/invoices"
+            className="flex items-center gap-1.5 px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 text-white text-xs font-semibold rounded-xl shadow-xs transition"
+          >
+            <ReceiptText className="w-3.5 h-3.5" />
+            <span>Terbitkan Invoice</span>
+          </Link>
+        </div>
       </div>
 
-      {/* Grid Statistik */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+      {/* 2. Banner Sorotan Mendesak (Urgent Action Center) */}
+      {(finance.overdueCount > 0 || needMeterCount > 0) && (
+        <div className="bg-rose-50 border border-rose-200 rounded-2xl p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-xl bg-rose-600 text-white flex items-center justify-center flex-shrink-0 mt-0.5">
+              <ShieldAlert className="w-5 h-5" />
+            </div>
+            <div>
+              <h2 className="text-sm font-bold text-rose-950">Tindakan Mendesak Memerlukan Tindak Lanjut</h2>
+              <div className="text-xs text-rose-800 mt-1 flex flex-wrap gap-x-4 gap-y-1">
+                {finance.overdueCount > 0 && (
+                  <span>
+                    • <strong>{finance.overdueCount} tagihan</strong> telah melewati tanggal jatuh tempo!
+                  </span>
+                )}
+                {needMeterCount > 0 && (
+                  <span>
+                    • <strong>{needMeterCount} kamar</strong> belum dicatat angka meteran listrik siklus ini!
+                  </span>
+                )}
+              </div>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            {finance.overdueCount > 0 && (
+              <Link
+                href="/invoices"
+                className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 text-white rounded-lg text-xs font-semibold transition"
+              >
+                Follow-up WA
+              </Link>
+            )}
+            {needMeterCount > 0 && (
+              <Link
+                href="/meter"
+                className="px-3 py-1.5 bg-white text-rose-900 border border-rose-200 hover:bg-rose-100 rounded-lg text-xs font-semibold transition"
+              >
+                Catat kWh Sekarang
+              </Link>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* 3. Grid Statistik Ringkas */}
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
         <StatCard
-          title="Tingkat Hunian"
+          title="Okupansi"
           value={`${occupancy.occupancyRate}%`}
-          subtitle={`${occupancy.occupied} terisi dari ${occupancy.total} total kamar`}
+          subtitle={`${occupancy.occupied}/${occupancy.total} Kamar`}
           icon={DoorClosed}
         />
         <StatCard
           title="Penghuni Aktif"
           value={tenants.length}
-          subtitle="Total penyewa terdaftar"
+          subtitle="Penyewa terdaftar"
           icon={Users}
         />
         <StatCard
-          title="Pemasukan Terbayar"
+          title="Kas Terkumpul"
           value={formatRupiah(finance.totalRevenue)}
-          subtitle={`${finance.paidCount} invoice lunas`}
+          subtitle={`${finance.paidCount} Lunas`}
           icon={Wallet}
           variant="success"
         />
         <StatCard
-          title="Tunggakan Belum Lunas"
+          title="Menunggu Bayar"
           value={formatRupiah(finance.totalUnpaid)}
-          subtitle={`${finance.unpaidCount} invoice menunggu`}
-          icon={AlertCircle}
+          subtitle={`${finance.unpaidCount} Belum Lunas`}
+          icon={Clock}
           variant="warning"
         />
       </div>
 
-      {/* Pintasan Cepat */}
-      <div className="bg-white p-6 rounded-2xl border border-slate-200">
-        <h2 className="text-sm font-semibold text-slate-900 uppercase tracking-wider mb-4">Aksi Cepat</h2>
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-          <Link
-            href="/rooms"
-            className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/50 text-slate-700 text-sm font-medium transition"
-          >
-            <Plus className="w-4 h-4 text-indigo-600" />
-            <span>Tambah Kamar</span>
-          </Link>
-          <Link
-            href="/tenants"
-            className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/50 text-slate-700 text-sm font-medium transition"
-          >
-            <Users className="w-4 h-4 text-indigo-600" />
-            <span>Daftar Penghuni</span>
-          </Link>
-          <Link
-            href="/meter"
-            className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/50 text-slate-700 text-sm font-medium transition"
-          >
-            <Zap className="w-4 h-4 text-indigo-600" />
-            <span>Catat Listrik</span>
-          </Link>
-          <Link
-            href="/invoices"
-            className="flex items-center gap-2.5 p-3 rounded-xl border border-slate-200 hover:border-indigo-500 hover:bg-indigo-50/50 text-slate-700 text-sm font-medium transition"
-          >
-            <ReceiptText className="w-4 h-4 text-indigo-600" />
-            <span>Kelola Tagihan</span>
+      {/* 4. Live Visual Interactive Room Grid */}
+      <div className="space-y-3">
+        <div className="flex items-center justify-between">
+          <div>
+            <h2 className="text-base font-bold text-slate-900">Monitoring Kamar Interaktif</h2>
+            <p className="text-xs text-slate-500">
+              Status warna: 🟢 Tersedia, 🔵 Terisi & Aman, 🟡 Perlu Catat Listrik/Batas Tempo, 🔴 Menunggak.
+            </p>
+          </div>
+          <Link href="/rooms" className="text-xs font-semibold text-indigo-600 hover:underline">
+            Kelola Kamar →
           </Link>
         </div>
+
+        <InteractiveRoomGrid rooms={monitoringRooms} />
       </div>
 
-      {/* Invoice Terbaru */}
-      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden">
-        <div className="p-6 border-b border-slate-100 flex items-center justify-between">
+      {/* 5. Daftar Invoice Terbaru */}
+      <div className="bg-white rounded-2xl border border-slate-200 overflow-hidden shadow-xs">
+        <div className="p-5 border-b border-slate-100 flex items-center justify-between">
           <div>
-            <h2 className="text-base font-bold text-slate-900">Tagihan Terbaru</h2>
-            <p className="text-xs text-slate-400 mt-0.5">Daftar transaksi dan status penagihan kos terkini</p>
+            <h2 className="text-sm font-bold text-slate-900">Tagihan Terbit Terakhir</h2>
+            <p className="text-xs text-slate-400 mt-0.5">Pantau status pembayaran dan pengiriman pesan WhatsApp</p>
           </div>
-          <Link href="/invoices" className="text-xs font-semibold text-indigo-600 hover:text-indigo-700">
-            Lihat Semua →
+          <Link href="/invoices" className="text-xs font-semibold text-indigo-600 hover:underline">
+            Lihat Semua Tagihan →
           </Link>
         </div>
 
@@ -124,24 +225,24 @@ export default async function DashboardPage() {
             <tbody className="divide-y divide-slate-100">
               {recentInvoices.slice(0, 5).map((inv) => (
                 <tr key={inv.id} className="hover:bg-slate-50/70 transition">
-                  <td className="px-6 py-4 font-mono text-xs text-slate-900 font-medium">
+                  <td className="px-6 py-4 font-mono text-xs text-slate-900 font-semibold">
                     {inv.invoiceNumber}
                   </td>
                   <td className="px-6 py-4">
-                    <div className="font-medium text-slate-900">{inv.tenant.user.name}</div>
+                    <div className="font-semibold text-slate-900">{inv.tenant.user.name}</div>
                     <div className="text-xs text-slate-400">Kamar {inv.tenant.room.roomNumber} ({inv.tenant.room.type})</div>
                   </td>
-                  <td className="px-6 py-4 text-xs">{formatDateIndo(inv.dueDate)}</td>
-                  <td className="px-6 py-4 font-semibold text-slate-900">
+                  <td className="px-6 py-4 text-xs font-medium">{formatDateIndo(inv.dueDate)}</td>
+                  <td className="px-6 py-4 font-bold text-slate-900">
                     {formatRupiah(inv.totalAmount)}
                   </td>
                   <td className="px-6 py-4">
                     <span
                       className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold ${
                         inv.status === "PAID"
-                          ? "bg-emerald-50 text-emerald-700"
+                          ? "bg-emerald-50 text-emerald-700 border border-emerald-200"
                           : inv.status === "UNPAID"
-                          ? "bg-amber-50 text-amber-700"
+                          ? "bg-amber-50 text-amber-700 border border-amber-200"
                           : "bg-slate-100 text-slate-600"
                       }`}
                     >

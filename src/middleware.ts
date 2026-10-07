@@ -24,8 +24,8 @@ export async function middleware(request: NextRequest) {
     }
   }
 
-  // Jika sudah login dan akses /login, redirect sesuai role
-  if (pathname === "/login") {
+  // Jika sudah login dan akses /login atau /register, redirect sesuai role
+  if (pathname === "/login" || pathname === "/register") {
     if (session) {
       if (session.role === "TENANT") {
         return NextResponse.redirect(new URL("/portal", request.url));
@@ -59,5 +59,5 @@ export async function middleware(request: NextRequest) {
 }
 
 export const config = {
-  matcher: ["/login", "/dashboard/:path*", "/rooms/:path*", "/tenants/:path*", "/meter/:path*", "/invoices/:path*", "/portal/:path*"],
+  matcher: ["/login", "/register", "/dashboard/:path*", "/rooms/:path*", "/tenants/:path*", "/meter/:path*", "/invoices/:path*", "/portal/:path*"],
 };

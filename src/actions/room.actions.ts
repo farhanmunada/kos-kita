@@ -7,8 +7,10 @@ import { getSession } from "@/lib/auth";
 
 const roomSchema = z.object({
   roomNumber: z.string().min(1, "Nomor kamar wajib diisi"),
+  name: z.string().optional(),
   type: z.string().min(1, "Tipe kamar wajib diisi"),
   basePrice: z.coerce.number().positive("Harga sewa harus lebih dari 0"),
+  facilities: z.array(z.string()).default([]),
   status: z.enum(["AVAILABLE", "OCCUPIED", "MAINTENANCE"]).default("AVAILABLE"),
 });
 
@@ -18,10 +20,14 @@ export async function createRoomAction(formData: FormData) {
     return { success: false, error: "Akses ditolak" };
   }
 
+  const rawFacilities = formData.getAll("facilities").map(String);
+
   const parsed = roomSchema.safeParse({
     roomNumber: formData.get("roomNumber"),
+    name: formData.get("name") || undefined,
     type: formData.get("type"),
     basePrice: formData.get("basePrice"),
+    facilities: rawFacilities,
     status: formData.get("status") || "AVAILABLE",
   });
 
